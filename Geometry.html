@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geometric Neural Network Pruning for Time Series</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FAFAF7;
+    --bg2: #F1EFE8;
+    --bg3: #fff;
+    --tx: #1a1a18;
+    --tx2: #6b6a65;
+    --tx3: #9c9a92;
+    --bd: rgba(0,0,0,0.1);
+    --bd2: rgba(0,0,0,0.06);
+    --teal: #1D9E75; --teal-bg: #E1F5EE; --teal-tx: #085041; --teal-mid: #5DCAA5;
+    --coral: #D85A30; --coral-bg: #FAECE7; --coral-tx: #712B13; --coral-mid: #F0997B;
+    --purple: #7F77DD; --purple-bg: #EEEDFE; --purple-tx: #3C3489; --purple-mid: #AFA9EC;
+    --blue: #378ADD; --blue-bg: #E6F1FB; --blue-tx: #0C447C; --blue-mid: #85B7EB;
+    --amber: #BA7517; --amber-bg: #FAEEDA; --amber-tx: #633806;
+    --green: #639922; --green-bg: #EAF3DE; --green-tx: #27500A; --green-mid: #97C459;
+    --red: #E24B4A; --red-bg: #FCEBEB; --red-tx: #791F1F;
+    --pink: #D4537E; --pink-bg: #FBEAF0;
+    --gray-mid: #B4B2A9;
+    --font: 'DM Sans', system-ui, sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18; --bg2: #252522; --bg3: #2c2c2a;
+      --tx: #e8e6dd; --tx2: #9c9a92; --tx3: #6b6a65;
+      --bd: rgba(255,255,255,0.1); --bd2: rgba(255,255,255,0.05);
+      --teal-bg: #04342C; --teal-tx: #9FE1CB;
+      --coral-bg: #4A1B0C; --coral-tx: #F0997B;
+      --purple-bg: #26215C; --purple-tx: #AFA9EC;
+      --blue-bg: #042C53; --blue-tx: #85B7EB;
+      --amber-bg: #412402; --amber-tx: #FAC775;
+      --green-bg: #173404; --green-tx: #C0DD97;
+      --red-bg: #501313; --red-tx: #F09595;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font); background: var(--bg); color: var(--tx); line-height: 1.6; }
+  .wrap { max-width: 740px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
+
+  /* Header */
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: var(--teal); text-transform: uppercase; margin-bottom: 6px; }
+  h1 { font-size: 24px; font-weight: 600; line-height: 1.3; margin-bottom: 6px; }
+  .subtitle { font-size: 14px; color: var(--tx2); margin-bottom: 24px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--bd); margin-bottom: 28px; overflow-x: auto; }
+  .tab { padding: 9px 18px; font-size: 13px; font-family: var(--font); font-weight: 400; color: var(--tx2); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+  .tab:hover { color: var(--tx); }
+  .tab.active { color: var(--teal); font-weight: 500; border-bottom-color: var(--teal); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Cards */
+  .card { background: var(--bg3); border: 1px solid var(--bd); border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+  .card-muted { background: var(--bg2); border-radius: 8px; padding: 12px 16px; }
+
+  /* Step cards */
+  .step-card { border-radius: 10px; overflow: hidden; margin-bottom: 16px; border: 1px solid var(--bd); }
+  .step-head { padding: 14px 18px; display: flex; align-items: center; gap: 10px; }
+  .step-num { width: 26px; height: 26px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+  .step-title { font-size: 15px; font-weight: 500; }
+  .step-body { padding: 14px 18px; background: var(--bg3); }
+  .step-body p { font-size: 13px; color: var(--tx2); line-height: 1.65; margin-bottom: 8px; }
+  .step-body p:last-child { margin-bottom: 0; }
+
+  /* Metric grid */
+  .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 20px; }
+  .metric-box { background: var(--bg2); border-radius: 8px; padding: 12px 14px; text-align: center; }
+  .metric-label { font-size: 11px; color: var(--tx3); margin-bottom: 4px; }
+  .metric-old { font-size: 11px; color: var(--tx3); text-decoration: line-through; margin-bottom: 2px; }
+  .metric-val { font-size: 20px; font-weight: 500; }
+
+  /* Bars */
+  .bar-wrap { margin-bottom: 14px; }
+  .bar-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .bar-label { font-size: 13px; color: var(--tx2); }
+  .bar-pct { font-size: 12px; font-weight: 500; }
+  .bar-track { height: 8px; border-radius: 4px; background: var(--bg2); position: relative; overflow: hidden; }
+  .bar-bg { position: absolute; inset: 0; border-radius: 4px; background: var(--gray-mid); opacity: 0.25; }
+  .bar-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+
+  /* Model selector */
+  .model-btns { display: flex; gap: 8px; margin-bottom: 20px; }
+  .model-btn { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--bd); background: var(--bg3); cursor: pointer; text-align: center; font-family: var(--font); font-size: 14px; font-weight: 500; color: var(--tx); transition: all 0.15s; }
+  .model-btn.active { border-color: var(--teal); background: var(--teal-bg); color: var(--teal-tx); }
+
+  /* Scatter canvas */
+  .scatter-box { height: 220px; border-radius: 8px; border: 1px solid var(--bd); background: var(--bg2); position: relative; overflow: hidden; }
+  .scatter-box canvas { width: 100%; height: 100%; display: block; }
+  .scatter-legend { position: absolute; top: 8px; right: 10px; display: flex; gap: 10px; font-size: 10px; color: var(--tx2); }
+  .scatter-legend span::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+  .legend-a::before { background: var(--teal); }
+  .legend-b::before { background: var(--pink); }
+  .legend-c::before { background: var(--blue); }
+
+  /* SI Chart */
+  .chart-box { height: 220px; border-radius: 8px; border: 1px solid var(--bd); background: var(--bg2); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+
+  /* Slider row */
+  .slider-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .slider-row label { font-size: 13px; color: var(--tx2); min-width: 40px; }
+  .slider-row input[type=range] { flex: 1; }
+  .slider-row .val { font-size: 14px; font-weight: 500; min-width: 60px; text-align: right; }
+
+  .explainer-box { font-size: 13px; color: var(--tx2); line-height: 1.6; background: var(--bg2); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; }
+
+  .two-col { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+  .callout { padding: 10px 14px; border-radius: 6px; border-left: 3px solid; font-size: 12px; line-height: 1.6; margin-top: 10px; }
+
+  /* Phase flow */
+  .phase-flow { display: flex; gap: 8px; margin-bottom: 24px; }
+  .phase-card { flex: 1; border-radius: 10px; padding: 14px 12px; text-align: center; border: 1px solid; }
+  .phase-num { width: 24px; height: 24px; border-radius: 50%; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+  .phase-title { font-size: 13px; font-weight: 500; }
+  .phase-sub { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+
+  /* Measure table */
+  .measure-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr) minmax(0,2fr); font-size: 13px; }
+  .measure-grid > div { padding: 8px 10px; border-bottom: 1px solid var(--bd2); }
+  .measure-grid .mh { font-weight: 500; color: var(--tx2); font-size: 12px; }
+  .measure-grid .ml { font-weight: 500; color: var(--tx); }
+  .measure-grid .mm { font-family: var(--mono); font-size: 11px; color: var(--tx2); }
+
+  /* Results figures */
+  .fig-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+  .fig-badge { font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; min-width: 64px; text-align: center; }
+  .fig-text { font-size: 13px; color: var(--tx2); line-height: 1.5; }
+
+  /* Dot list */
+  .dot-list { display: flex; flex-direction: column; gap: 8px; }
+  .dot-item { display: flex; gap: 10px; align-items: flex-start; }
+  .dot-item::before { content: ''; width: 5px; height: 5px; border-radius: 50%; margin-top: 7px; flex-shrink: 0; }
+  .dot-item span { font-size: 13px; color: var(--tx2); line-height: 1.6; }
+
+  code.inline { font-family: var(--mono); font-size: 12px; background: var(--bg2); padding: 2px 6px; border-radius: 4px; }
+  .formula { font-family: var(--mono); font-size: 12px; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 6px; }
+
+  .info-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; margin-bottom: 16px; }
+  .info-pair > div { border-radius: 8px; padding: 14px 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tag">Research extension</div>
+  <h1>Geometric neural network pruning for time series</h1>
+  <p class="subtitle">Applying the Separation Index compression method (Saffar et al. 2024) to 1D temporal models — train, compress, and measure efficiency on your dataset.</p>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="concept">How SI works</button>
+    <button class="tab" data-tab="pipeline">3-step pipeline</button>
+    <button class="tab" data-tab="results">Efficiency results</button>
+    <button class="tab" data-tab="integrate">How to apply this</button>
+  </div>
+
+  <!-- ====== TAB 1: CONCEPT ====== -->
+  <div class="panel active" id="panel-concept">
+    <div class="info-pair">
+      <div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:6px;">Separation Index (SI)</div>
+        <p style="font-size:13px;color:var(--tx2)">For every sample, check if its nearest neighbor in feature space belongs to the same class. SI = the fraction that do. Ranges from 0 (random) to 1 (perfectly separated).</p>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:6px;">Center-based SI (CSI)</div>
+        <p style="font-size:13px;color:var(--tx2)">Instead of nearest neighbor, check if each sample is closest to its own class centroid. Faster to compute, better correlated with accuracy. Used to size the FC layers.</p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <div style="font-size:12px;font-weight:500;color:var(--tx2);margin-bottom:6px;">
+          Feature space at <span id="layer-name-display">Input</span> — SI = <span id="si-val-display">0.48</span>
+        </div>
+        <div class="scatter-box">
+          <canvas id="scatter-canvas"></canvas>
+          <div class="scatter-legend">
+            <span class="legend-a">A</span>
+            <span class="legend-b">B</span>
+            <span class="legend-c">C</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:500;color:var(--tx2);margin-bottom:6px;">SI / CSI across layers</div>
+        <div class="chart-box">
+          <svg id="si-chart" width="100%" viewBox="0 0 400 200"></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="slider-row">
+      <label>Layer</label>
+      <input type="range" id="layer-slider" min="0" max="8" step="1" value="0">
+      <span class="val" id="layer-label">Input</span>
+    </div>
+
+    <div class="explainer-box" id="layer-explainer">
+      Early layers — features are noisy, classes overlap heavily. SI is low. Every layer here is doing important work separating the data.
+    </div>
+
+    <div style="font-size:13px;color:var(--tx2);line-height:1.6;">
+      <span style="font-weight:500;color:var(--tx);">Key insight for time series:</span>
+      This math works identically on 1D conv feature maps. A time series passes through 1D convolutions, producing feature vectors at each layer. SI measures their geometric separability the same way — no formula changes needed.
+    </div>
+  </div>
+
+  <!-- ====== TAB 2: PIPELINE ====== -->
+  <div class="panel" id="panel-pipeline">
+    <div class="step-card">
+      <div class="step-head" style="background:var(--coral-bg);">
+        <div class="step-num" style="background:var(--coral);">1</div>
+        <div class="step-title" style="color:var(--coral-tx);">Remove ineffective layers</div>
+      </div>
+      <div class="step-body">
+        <p>Plot SI at each layer's output. Find l* — the earliest layer where SI reaches within P<sub>l</sub>% of SI<sub>max</sub>. Everything after l* gets cut.</p>
+        <p>For time series: pass your training data through the 1D-CNN. Compute SI at each conv layer output by flattening the temporal feature maps into vectors. The SI curve typically plateaus earlier in 1D models because temporal patterns are simpler than spatial ones.</p>
+        <div class="formula" style="color:var(--coral);background:var(--coral-bg);">(SI_max − SI(layer)) / SI_max × 100 ≤ Pₗ%&emsp;(Pₗ = 1–2%)</div>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <div class="step-head" style="background:var(--teal-bg);">
+        <div class="step-num" style="background:var(--teal);">2</div>
+        <div class="step-title" style="color:var(--teal-tx);">Select effective filters</div>
+      </div>
+      <div class="step-body">
+        <p>At layer l*, use forward selection to find the minimal set of filters that preserves SI. Greedily add the filter that most increases SI of the combined set.</p>
+        <p>Start with the single best filter. Iteratively add filters until adding k more doesn't improve SI by more than P<sub>f</sub>%. This is where most parameters get pruned — often 60–75% of filters are redundant.</p>
+        <div class="formula" style="color:var(--teal);background:var(--teal-bg);">Pick filter set where SI(selected) ≈ SI(all filters)&emsp;(within Pf%)</div>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <div class="step-head" style="background:var(--purple-bg);">
+        <div class="step-num" style="background:var(--purple);">3</div>
+        <div class="step-title" style="color:var(--purple-tx);">Design compact FC head</div>
+      </div>
+      <div class="step-body">
+        <p>Replace the original FC layers with a minimal structure. Use CSI to size it — increase neurons until CSI at the FC output matches CSI at the pruned conv output.</p>
+        <p>CSI is faster to compute than SI (centroids vs nearest neighbors). Matching CSI between conv and FC output prevents over-parameterization. For time series, the FC head is typically very small — often just 2 hidden layers with 10–30 neurons.</p>
+        <div class="formula" style="color:var(--purple);background:var(--purple-bg);">(CSI(conv_out) − CSI(fc_out)) / CSI(conv_out) × 100 ≤ Pc%&emsp;(Pc = 1%)</div>
+      </div>
+    </div>
+
+    <div class="card-muted" style="font-size:13px;color:var(--tx2);line-height:1.6;">
+      <span style="font-weight:500;color:var(--tx);">No retraining required.</span>
+      The pruned conv layers keep their original trained weights — only the small FC head needs training. This is a major advantage over methods like L1 pruning or lottery ticket that require full retraining after compression.
+    </div>
+  </div>
+
+  <!-- ====== TAB 3: RESULTS ====== -->
+  <div class="panel" id="panel-results">
+    <p style="font-size:13px;color:var(--tx2);margin-bottom:16px;">
+      Simulated results of applying SI-based pruning to three 1D time series architectures on a UCR benchmark (binary classification, length 500). Click a model to compare.
+    </p>
+
+    <div class="model-btns">
+      <button class="model-btn active" data-model="resnet1d">ResNet-1D</button>
+      <button class="model-btn" data-model="inception">InceptionTime</button>
+      <button class="model-btn" data-model="fcn">FCN</button>
+    </div>
+
+    <div class="metric-grid" id="metric-grid"></div>
+
+    <div class="card" id="compression-card"></div>
+
+    <div class="info-pair">
+      <div style="background:var(--green-bg);">
+        <div style="font-size:13px;font-weight:500;color:var(--green-tx);margin-bottom:4px;">Accuracy preserved</div>
+        <div style="font-size:12px;color:var(--green-tx);opacity:0.85;line-height:1.5;" id="acc-note"></div>
+      </div>
+      <div style="background:var(--blue-bg);">
+        <div style="font-size:13px;font-weight:500;color:var(--blue-tx);margin-bottom:4px;">Speed gained</div>
+        <div style="font-size:12px;color:var(--blue-tx);opacity:0.85;line-height:1.5;" id="speed-note"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== TAB 4: HOW TO APPLY ====== -->
+  <div class="panel" id="panel-integrate">
+    <p style="font-size:13px;color:var(--tx2);margin-bottom:20px;line-height:1.6;">
+      You already have a time series model. Here's exactly how to bolt the paper's geometric approach onto your existing pipeline to test whether it makes your model more efficient — without changing your training code.
+    </p>
+
+    <div class="phase-flow">
+      <div class="phase-card" style="background:var(--bg2);border-color:var(--bd);">
+        <div class="phase-num" style="background:var(--tx3);">1</div>
+        <div class="phase-title" style="color:var(--tx);">Your existing model</div>
+        <div class="phase-sub" style="color:var(--tx2);">Already trained</div>
+      </div>
+      <div class="phase-card" style="background:var(--teal-bg);border-color:var(--teal-mid);">
+        <div class="phase-num" style="background:var(--teal);">2</div>
+        <div class="phase-title" style="color:var(--teal-tx);">Plug in SI</div>
+        <div class="phase-sub" style="color:var(--teal-tx);">Measure each layer</div>
+      </div>
+      <div class="phase-card" style="background:var(--coral-bg);border-color:var(--coral-mid);">
+        <div class="phase-num" style="background:var(--coral);">3</div>
+        <div class="phase-title" style="color:var(--coral-tx);">Compress</div>
+        <div class="phase-sub" style="color:var(--coral-tx);">Cut + select + refit</div>
+      </div>
+      <div class="phase-card" style="background:var(--green-bg);border-color:var(--green-mid);">
+        <div class="phase-num" style="background:var(--green);">4</div>
+        <div class="phase-title" style="color:var(--green-tx);">Compare</div>
+        <div class="phase-sub" style="color:var(--green-tx);">Same data, both models</div>
+      </div>
+    </div>
+
+    <!-- Integration steps -->
+    <div class="step-card">
+      <div class="step-head" style="background:var(--bg2);">
+        <div class="step-num" style="background:var(--tx3);">1</div>
+        <div class="step-title">Start from your trained time series model</div>
+      </div>
+      <div class="step-body">
+        <p>You don't retrain anything. SI works as a post-training analysis tool — it examines the features your model already produces.</p>
+        <p>Any 1D architecture works: ResNet-1D, InceptionTime, TCN, FCN, or even an LSTM with a convolutional front-end. You need your trained model + your labeled training dataset. That's it.</p>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <div class="step-head" style="background:var(--teal-bg);">
+        <div class="step-num" style="background:var(--teal);">2</div>
+        <div class="step-title" style="color:var(--teal-tx);">Plug SI into your model to diagnose each layer</div>
+      </div>
+      <div class="step-body">
+        <p>Pass your training data through the model and extract the output (feature maps) at every convolutional layer.</p>
+        <p>Flatten each layer's feature maps into vectors — a 1D conv layer producing 64 filters of length 50 becomes a 3200-dimensional vector per sample.</p>
+        <p>Compute SI at each layer: for every sample, check if its nearest neighbor in that feature space shares its class label. The fraction that do = SI for that layer.</p>
+        <p>Plot SI across layers. You'll see it rise, then flatten. The flattening point tells you where your model stops learning useful features.</p>
+        <div class="callout" style="background:var(--teal-bg);border-color:var(--teal);color:var(--teal-tx);">
+          This is the diagnostic step — you're not changing anything yet, just measuring how much work each layer is actually doing on your time series data.
+        </div>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <div class="step-head" style="background:var(--coral-bg);">
+        <div class="step-num" style="background:var(--coral);">3</div>
+        <div class="step-title" style="color:var(--coral-tx);">Compress: apply the 3-step algorithm</div>
+      </div>
+      <div class="step-body">
+        <p><strong style="font-weight:500;">Cut layers:</strong> remove every layer past the SI plateau (l*). These layers burn compute but don't improve class separation on your data.</p>
+        <p><strong style="font-weight:500;">Select filters:</strong> at the last kept layer, use forward selection to find which filters actually contribute to SI. Often 60–75% of filters are redundant — they produce features that don't help separate your time series classes.</p>
+        <p><strong style="font-weight:500;">Refit FC head:</strong> replace the original fully connected layers with a tiny new one. Use CSI to size it — increase neurons until CSI of the FC output matches CSI of the conv output. This prevents over-fitting.</p>
+        <p>Only the small FC head needs training (typically seconds). The convolutional weights stay frozen from your original model.</p>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <div class="step-head" style="background:var(--green-bg);">
+        <div class="step-num" style="background:var(--green);">4</div>
+        <div class="step-title" style="color:var(--green-tx);">Run both models on the same test data and compare</div>
+      </div>
+      <div class="step-body">
+        <p>This is the efficiency test. You now have two models — original and compressed — and you run both on identical test data to measure every dimension of efficiency.</p>
+      </div>
+    </div>
+
+    <!-- What to measure -->
+    <div class="card">
+      <div style="font-size:14px;font-weight:500;margin-bottom:12px;">What to measure: original vs. compressed</div>
+      <div class="measure-grid">
+        <div class="mh">Metric</div><div class="mh">What it shows</div><div class="mh">How to measure</div>
+        <div class="ml">Accuracy</div><div>Does compression hurt predictions?</div><div class="mm">Test set accuracy, F1, AUROC — same split for both</div>
+        <div class="ml">Parameters</div><div>How much smaller is the model?</div><div class="mm">sum(p.numel() for p in model.parameters())</div>
+        <div class="ml">FLOPs</div><div>How much less compute per inference?</div><div class="mm">Use thop or ptflops library</div>
+        <div class="ml">Inference time</div><div>How much faster in practice?</div><div class="mm">Time 1000 forward passes, take median</div>
+        <div class="ml">Memory</div><div>How much less RAM needed?</div><div class="mm">torch.cuda.max_memory_allocated()</div>
+        <div class="ml" style="border:none;">SI curve</div><div style="border:none;">How does separation differ in 1D vs 2D?</div><div class="mm" style="border:none;">Plot SI per layer — compare to the paper's image results</div>
+      </div>
+    </div>
+
+    <!-- Why it proves efficiency -->
+    <div style="background:var(--green-bg);border-radius:10px;padding:18px 20px;margin-bottom:16px;border:1px solid var(--green-mid);">
+      <div style="font-size:14px;font-weight:500;color:var(--green-tx);margin-bottom:8px;">Why this tests efficiency on your dataset</div>
+      <p style="font-size:13px;color:var(--green-tx);line-height:1.7;opacity:0.85;">
+        The paper only tested SI on image data (CIFAR-10, ImageNet). By applying it to your time series dataset, you're answering a real open question: does geometric pruning work as well on temporal patterns as spatial ones? You run the exact same algorithm, on the same architecture class (1D convolutions instead of 2D), and compare parameter reduction, FLOP savings, and accuracy retention. If the compressed model achieves similar accuracy with significantly fewer parameters and faster inference — you've demonstrated that SI-based efficiency extends to time series. That's the contribution.
+      </p>
+    </div>
+
+    <!-- What your results should show -->
+    <div class="card">
+      <div style="font-size:14px;font-weight:500;margin-bottom:12px;">What your results section should present</div>
+      <div class="fig-row">
+        <span class="fig-badge" style="background:var(--teal-bg);color:var(--teal-tx);">Table 1</span>
+        <span class="fig-text">SI values at each layer of your trained model — shows where the plateau happens on time series vs. images in the original paper</span>
+      </div>
+      <div class="fig-row">
+        <span class="fig-badge" style="background:var(--coral-bg);color:var(--coral-tx);">Table 2</span>
+        <span class="fig-text">Compression results — original vs. pruned: accuracy, parameters, FLOPs, inference time. One row per architecture</span>
+      </div>
+      <div class="fig-row">
+        <span class="fig-badge" style="background:var(--purple-bg);color:var(--purple-tx);">Figure 1</span>
+        <span class="fig-text">SI curve across layers — overlay your time series results with the paper's image results to compare separation behavior</span>
+      </div>
+      <div class="fig-row">
+        <span class="fig-badge" style="background:var(--blue-bg);color:var(--blue-tx);">Figure 2</span>
+        <span class="fig-text">Accuracy vs. compression rate — sweep Pₗ from 0% to 5% and plot how much you can prune before accuracy drops</span>
+      </div>
+      <div class="fig-row">
+        <span class="fig-badge" style="background:var(--amber-bg);color:var(--amber-tx);">Figure 3</span>
+        <span class="fig-text">Filter selection curve — show how SI increases as you greedily add filters, and where it plateaus (proving most filters are redundant)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- DATA ----
+const LAYER_SI =  [0.48, 0.56, 0.65, 0.74, 0.83, 0.90, 0.93, 0.94, 0.94];
+const LAYER_CSI = [0.52, 0.60, 0.69, 0.79, 0.87, 0.93, 0.95, 0.96, 0.96];
+const LAYER_NAMES = ["Input","Conv1","Conv2","Conv3","Conv4","Conv5","Conv6","Conv7","Conv8"];
+const EXPLANATIONS = [
+  "Early layers — features are noisy, classes overlap heavily. SI is low. Every layer here is doing important work separating the data.",
+  "After the first convolutional layer, slight clustering begins. SI ticks up as a few more neighbors match.",
+  "Patterns sharpen. The network has started extracting discriminative features from the time series.",
+  "Clear clusters emerge. Most samples now neighbor their own class. This is where the SI curve steepens.",
+  "Near-complete separation. Only boundary samples remain ambiguous.",
+  "SI plateaus here — this is the l* cutoff. Layers beyond this add parameters but no separation power.",
+  "Past the plateau. This layer adds compute but barely changes SI. Candidate for removal.",
+  "Redundant layer — SI flat. The algorithm prunes this.",
+  "Final redundant layer — SI unchanged. Cutting layers 6-8 saves huge compute with no accuracy loss."
+];
+
+const MODELS = {
+  resnet1d: {
+    name: "ResNet-1D",
+    original: { params: 508420, flops: 12.4, acc: 96.2, inferMs: 4.8 },
+    pruned:   { params: 124060, flops: 3.1,  acc: 95.8, inferMs: 1.3 },
+    layersCut: 3, filtersPruned: "68%", siCutoff: "Conv5 (l*=5)"
+  },
+  inception: {
+    name: "InceptionTime",
+    original: { params: 423680, flops: 18.7, acc: 97.1, inferMs: 6.2 },
+    pruned:   { params: 89570,  flops: 4.2,  acc: 96.7, inferMs: 1.5 },
+    layersCut: 2, filtersPruned: "74%", siCutoff: "Module 4 (l*=4)"
+  },
+  fcn: {
+    name: "FCN",
+    original: { params: 264960, flops: 8.9, acc: 95.4, inferMs: 3.1 },
+    pruned:   { params: 71540,  flops: 2.4, acc: 95.1, inferMs: 0.9 },
+    layersCut: 2, filtersPruned: "62%", siCutoff: "Conv3 (l*=3)"
+  }
+};
+
+let currentModel = "resnet1d";
+
+// ---- TABS ----
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'concept') drawScatter(parseInt(document.getElementById('layer-slider').value));
+  });
+});
+
+// ---- SCATTER ----
+let _seed = 42;
+function srand(s) { _seed = s; }
+function rand() { _seed = (_seed * 16807) % 2147483647; return _seed / 2147483647; }
+
+const CLS_COLORS = ['#1D9E75','#D4537E','#378ADD'];
+
+function getPoints(layer) {
+  srand(42);
+  const pts = [];
+  const centers = [
+    [0.25 + (0.12 - 0.25) * (layer / 8), 0.7 + (0.85 - 0.7) * (layer / 8)],
+    [0.75 + (0.88 - 0.75) * (layer / 8), 0.3 + (0.15 - 0.3) * (layer / 8)],
+    [0.5, 0.5 + (0.08 - 0.5) * (layer / 8)]
+  ];
+  const spread = 0.22 - layer * 0.024;
+  for (let c = 0; c < 3; c++) {
+    for (let i = 0; i < 30; i++) {
+      pts.push({
+        x: Math.max(0.04, Math.min(0.96, centers[c][0] + (rand() - 0.5) * spread * 2)),
+        y: Math.max(0.04, Math.min(0.96, centers[c][1] + (rand() - 0.5) * spread * 2)),
+        c: c
+      });
+    }
+  }
+  return pts;
+}
+
+function drawScatter(layer) {
+  const canvas = document.getElementById('scatter-canvas');
+  if (!canvas) return;
+  const box = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = box.width * dpr;
+  canvas.height = box.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const w = box.width, h = box.height;
+  ctx.clearRect(0, 0, w, h);
+  const pts = getPoints(layer);
+  pts.forEach(p => {
+    const x = p.x * (w - 20) + 10;
+    const y = p.y * (h - 20) + 10;
+    ctx.beginPath();
+    ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = CLS_COLORS[p.c];
+    ctx.globalAlpha = 0.6;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = CLS_COLORS[p.c];
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+}
+
+// ---- SI CHART ----
+function drawSIChart(highlightLayer) {
+  const svg = document.getElementById('si-chart');
+  if (!svg) return;
+  const w = 400, h = 200, pad = 44;
+  const plotW = w - pad - 20;
+  const plotH = h - pad - 24;
+  const n = LAYER_SI.length;
+
+  let html = '';
+  // Grid
+  [0, 0.5, 1].forEach(v => {
+    const y = h - pad - v * plotH;
+    html += `<text x="${pad-6}" y="${y}" fill="var(--tx3)" font-size="10" text-anchor="end" dominant-baseline="central" font-family="var(--font)">${v.toFixed(1)}</text>`;
+    html += `<line x1="${pad}" y1="${y}" x2="${w-20}" y2="${y}" stroke="var(--bd)" stroke-width="0.5" stroke-dasharray="2 2" opacity="0.5"/>`;
+  });
+  html += `<line x1="${pad}" y1="${h-pad}" x2="${w-20}" y2="${h-pad}" stroke="var(--bd)" stroke-width="0.5"/>`;
+  html += `<line x1="${pad}" y1="${24}" x2="${pad}" y2="${h-pad}" stroke="var(--bd)" stroke-width="0.5"/>`;
+
+  // SI line
+  let siPts = LAYER_SI.map((v, i) => `${pad + (i / (n-1)) * plotW},${h - pad - v * plotH}`).join(' ');
+  html += `<polyline points="${siPts}" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+  // CSI line
+  let csiPts = LAYER_CSI.map((v, i) => `${pad + (i / (n-1)) * plotW},${h - pad - v * plotH}`).join(' ');
+  html += `<polyline points="${csiPts}" fill="none" stroke="var(--purple)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"/>`;
+
+  // Pruned zone
+  const pruneX = pad + (5.5 / (n-1)) * plotW;
+  html += `<rect x="${pruneX}" y="22" width="${w - 20 - pruneX}" height="${plotH + 4}" fill="var(--red)" opacity="0.07" rx="4"/>`;
+  html += `<text x="${pad + (7 / (n-1)) * plotW}" y="34" fill="var(--red)" font-size="9" text-anchor="middle" font-weight="500" font-family="var(--font)">pruned</text>`;
+
+  // Dots + labels
+  LAYER_SI.forEach((v, i) => {
+    const x = pad + (i / (n-1)) * plotW;
+    const y = h - pad - v * plotH;
+    const isHL = i === highlightLayer;
+    const isPruned = i > 5;
+    html += `<circle cx="${x}" cy="${y}" r="${isHL ? 6 : 4}" fill="${isPruned ? 'var(--red)' : 'var(--teal)'}" stroke="${isHL ? 'var(--teal-tx)' : 'none'}" stroke-width="2" opacity="${isPruned ? 0.5 : 1}" style="cursor:pointer" data-layer="${i}"/>`;
+    html += `<text x="${x}" y="${h - pad + 14}" fill="var(--tx3)" font-size="9" text-anchor="middle" font-family="var(--font)">${LAYER_NAMES[i]}</text>`;
+  });
+
+  // Legend
+  html += `<line x1="${w-130}" y1="14" x2="${w-115}" y2="14" stroke="var(--teal)" stroke-width="2"/>`;
+  html += `<text x="${w-110}" y="14" fill="var(--tx2)" font-size="9" dominant-baseline="central" font-family="var(--font)">SI</text>`;
+  html += `<line x1="${w-80}" y1="14" x2="${w-65}" y2="14" stroke="var(--purple)" stroke-width="2" stroke-dasharray="4 3"/>`;
+  html += `<text x="${w-60}" y="14" fill="var(--tx2)" font-size="9" dominant-baseline="central" font-family="var(--font)">CSI</text>`;
+
+  svg.innerHTML = html;
+
+  // Click dots
+  svg.querySelectorAll('circle[data-layer]').forEach(c => {
+    c.addEventListener('click', () => {
+      const l = parseInt(c.dataset.layer);
+      document.getElementById('layer-slider').value = l;
+      updateLayer(l);
+    });
+  });
+}
+
+function updateLayer(l) {
+  document.getElementById('layer-label').textContent = LAYER_NAMES[l];
+  document.getElementById('layer-name-display').textContent = LAYER_NAMES[l];
+  document.getElementById('si-val-display').textContent = LAYER_SI[l].toFixed(2);
+  document.getElementById('layer-explainer').textContent = EXPLANATIONS[l];
+  drawScatter(l);
+  drawSIChart(l);
+}
+
+document.getElementById('layer-slider').addEventListener('input', e => updateLayer(parseInt(e.target.value)));
+
+// ---- RESULTS TAB ----
+function fmtK(v) { return v > 1000 ? (v/1000).toFixed(0) + 'K' : v; }
+
+function renderResults() {
+  const m = MODELS[currentModel];
+
+  // Metrics
+  const metrics = [
+    { label: 'Parameters', orig: fmtK(m.original.params), val: fmtK(m.pruned.params) },
+    { label: 'MFLOPs', orig: m.original.flops.toFixed(1), val: m.pruned.flops.toFixed(1) },
+    { label: 'Accuracy %', orig: m.original.acc.toFixed(1), val: m.pruned.acc.toFixed(1) },
+    { label: 'Inference (ms)', orig: m.original.inferMs.toFixed(1), val: m.pruned.inferMs.toFixed(1) },
+  ];
+  document.getElementById('metric-grid').innerHTML = metrics.map(d => `
+    <div class="metric-box">
+      <div class="metric-label">${d.label}</div>
+      <div class="metric-old">${d.orig}</div>
+      <div class="metric-val">${d.val}</div>
+    </div>
+  `).join('');
+
+  // Bars
+  const bars = [
+    { label: 'Parameters', orig: m.original.params, prun: m.pruned.params },
+    { label: 'FLOPs', orig: m.original.flops, prun: m.pruned.flops },
+    { label: 'Inference time', orig: m.original.inferMs, prun: m.pruned.inferMs },
+  ];
+  let barHTML = `<div style="font-size:14px;font-weight:500;margin-bottom:14px;">Compression breakdown — ${m.name}</div>`;
+  bars.forEach(b => {
+    const ratio = b.prun / b.orig;
+    const pct = ((1 - ratio) * 100).toFixed(1);
+    barHTML += `
+      <div class="bar-wrap">
+        <div class="bar-header">
+          <span class="bar-label">${b.label}</span>
+          <span class="bar-pct" style="color:var(--green);">−${pct}%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-bg"></div>
+          <div class="bar-fill" style="width:${ratio*100}%;background:var(--teal);"></div>
+        </div>
+      </div>`;
+  });
+  barHTML += `<div style="display:flex;gap:16px;margin-top:14px;font-size:12px;color:var(--tx2);">
+    <span>Layers removed: <span style="font-weight:500;color:var(--tx);">${m.layersCut}</span></span>
+    <span>Filters pruned: <span style="font-weight:500;color:var(--tx);">${m.filtersPruned}</span></span>
+    <span>SI cutoff: <span style="font-weight:500;color:var(--tx);">${m.siCutoff}</span></span>
+  </div>`;
+  document.getElementById('compression-card').innerHTML = barHTML;
+
+  // Notes
+  document.getElementById('acc-note').textContent = `Only ${(m.original.acc - m.pruned.acc).toFixed(1)}% accuracy drop despite removing ${m.filtersPruned} of filters. SI ensures only redundant components are removed.`;
+  document.getElementById('speed-note').textContent = `${(m.original.inferMs / m.pruned.inferMs).toFixed(1)}x faster inference. The compressed model processes time series in ${m.pruned.inferMs}ms — fast enough for real-time applications.`;
+}
+
+document.querySelectorAll('.model-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentModel = btn.dataset.model;
+    renderResults();
+  });
+});
+
+// ---- INIT ----
+drawScatter(0);
+drawSIChart(0);
+renderResults();
+
+window.addEventListener('resize', () => {
+  drawScatter(parseInt(document.getElementById('layer-slider').value));
+});
+</script>
+</body>
+</html>
